@@ -1,6 +1,6 @@
 # Zero-Trust Workload Architecture (ZTWA) - Model 2: Telemetry & Verification
 
-## SECTION 1: PROJECT INTRODUCTION & STRATEGIC ARCHITECTURAL OUTLINE
+## SECTION 1: PROJECT INTRODUCTION & STRATEGIC ARCHITECTURAL OUTLINE 
 
 ### 1.1 OBJECTIVE AND SCOPE
 The core objective of the Zero-Trust Telemetry & Verification Lab is to construct a dual-plane behavioral audit trace that monitors machine-to-machine interactions [1.1.7]. This implementation establishes a programmatic forensic loop to trace token issuance metrics from our previous workload federation setup. By mapping properties extracted from the Microsoft Entra ID Service Principal Sign-In Logs directly against telemetry records from Azure Storage Diagnostic Logs (`StorageBlobLogs`), this project visually confirms token legitimacy, verifies role scopes, and records the exact discrete data transactions execute without reliance on human credentials [1.1.1, 1.2.2].
