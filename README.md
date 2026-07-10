@@ -36,3 +36,69 @@ Building zero-trust automation architectures is only half of the security engine
 ### MILESTONE 04: CLOSED-LOOP MODEL BINDING AND EXFILTRATION PROOFING
 *   **Step 1:** Formulate a unified telemetry search string to link sign-in timestamps and resource modifications into a scannable dashboard format [1.2.2].
 *   **Step 2:** Execute an intentional failure test by mutating your workflow settings to confirm the logging engine immediately catches unauthorized access blocks.
+# Zero-Trust Workload Architecture (ZTWA) - Model 2: Telemetry & Verification
+
+## SECTION 1: PROJECT INTRODUCTION & STRATEGIC ARCHITECTURAL OUTLINE 
+
+### 1.1 OBJECTIVE AND SCOPE
+The core objective of the Zero-Trust Telemetry & Verification Lab is to construct a dual-plane behavioral audit trace that monitors machine-to-machine interactions [1.1.7]. This implementation establishes a programmatic forensic loop to trace token issuance metrics from our previous workload federation setup. By mapping properties extracted from the Microsoft Entra ID Service Principal Sign-In Logs directly against telemetry records from Azure Storage Diagnostic Logs (`StorageBlobLogs`), this project visually confirms token legitimacy, verifies role scopes, and records the exact discrete data transactions executed without reliance on human credentials [1.1.1, 1.2.2].
+
+### 1.2 THE ARCHITECTURAL RATIONALE: WHY WE ARE AUDITING
+Building zero-trust automation architectures is only half of the security engineering lifecycle. Without granular log verification, administrators remain blind to silent validation errors, misconfigured access rules, or credential hijacking attempts. Relying on default configurations leaves a critical visibility gap. By capturing, parsing, and correlating cloud telemetry at both the identity plane (token minting) and the data plane (token consumption), security teams achieve 100% auditable evidence that automated code path executions align precisely with least-privilege guardrails [1.2.1, 1.2.2].
+
+### 1.3 MASTER COMPONENT VOCABULARY & SEMANTIC ANCHORS
+*   **Service Principal Sign-In Logs:** The specialized activity log stream inside Microsoft Entra ID that captures authentication records generated exclusively by non-human workload identities [1.1.1, 1.1.2].
+*   **StorageBlobLogs:** The dedicated, resource-specific telemetry table within an Azure Log Analytics Workspace that captures transaction-level histories for the Azure Blob Storage data plane [1.2.2].
+*   **Correlation ID:** The uniquely generated, immutable string property that bridges related events across separate log ecosystems to reconstruct step-by-step transaction chronologies [1.1.1, 1.2.5].
+*   **Federated Token Claims:** The inner JSON Web Token (JWT) key-value assertions—such as issuer matching and application identifier strings—presented by external runners to prove authorization rights [1.1.1, 1.1.4].
+
+---
+
+## SECTION 2: CORE IMPLEMENTATION GUIDELINE AND MILESTONE PATH
+
+### MILESTONE 01: TELEMETRY STREAMING & TARGET ROUTING CONFIGURATION
+*   **Step 1:** Establish an Azure Log Analytics Workspace to serve as our centralized query interface window.
+    *   *Result/Explanation:* Established a dedicated Log Analytics Workspace to act as the primary security information and event aggregation core. This ingestion window allows direct, un-aggregated log analysis using Kusto Query Language (KQL).
+*   **Step 2:** Navigate to the target Azure Storage Account and create a brand-new Diagnostic Setting targeting the Blob service sub-resource exclusively [1.2.2].
+    *   *Result/Explanation:* Configured a granular Diagnostic Setting under the storage account's Blob sub-resource (`stmeshbotlogssgt/blob`). Isolating the sub-resource prevents log clutter from unneeded file, queue, or table transactions.
+*   **Step 3:** Route the diagnostic stream directly to your Log Analytics Workspace, selecting the resource-specific option to enforce the native storage table schema [1.2.2].
+    *   *Result/Explanation:* Streaming target locked to the workspace. By selecting the **Resource-specific** option, logs are routed cleanly into the optimized `StorageBlobLogs` table schema instead of the generalized legacy `AzureDiagnostics` catch-all.
+
+### MILESTONE 02: IDENTITY-PLANE FORENSIC INGESTION & CLAIMS VERIFICATION
+*   **Step 1:** Access the Microsoft Entra ID admin window and open the Service Principal Sign-In Logs blade [1.1.1, 1.1.4].
+    *   *Result/Explanation:* Navigated to Monitoring > Sign-in logs, and shifted focus specifically to the **Service principal sign-ins** window to track non-human tokens issued to automated agents.
+*   **Step 2:** Apply strict query filters matching your specific App Registration Client ID value to isolate your GitHub automation runner transactions [1.1.1, 1.1.4].
+    *   *Result/Explanation:* Filtered logs strictly by Application ID `494071c6-3230-4a4a-bc31-9bb7a5389320` (`app-automation-bot`). This strips out noise and isolates token requests originating directly from the GitHub OpenID Connect (OIDC) federated handshake.
+*   **Step 3:** Extract and document the raw token metadata fields, verifying that the validation status registers as success [1.1.1].
+    *   *Result/Explanation:* Inspected token metadata showing a Status value of **Success**. The Entra ID platform evaluated the incoming OIDC token assertions from the external GitHub issuer, confirmed a match on the Federated Identity Credential mapping, and successfully issued a localized Azure access token.
+
+### MILESTONE 03: DATA-PLANE TRANSACTION CORRELATION & AUDITING
+*   **Step 1:** Open the Log Analytics Workspace Query interface and run an isolation routine targeting the `StorageBlobLogs` data table [1.2.2].
+    *   *Result/Explanation:* Executed a baseline isolation routine to verify real-time data-plane logging continuity.
+*   **Step 2:** Query for the specific operation string matching `PutBlob` to discover our test data payload upload history [1.2.1, 1.2.4].
+    *   *Result/Explanation:* Discovered discrete active upload logs by querying for `OperationName == "PutBlob"`. The logs confirmed successful file writes targeting the folder path `/stmeshbotlogssgt/vault-logs/connection-test.txt`.
+*   **Step 3:** Extract the caller identity metadata and confirm that the principal ID recorded by the storage account exactly matches the service principal identity string generated by Entra ID [1.1.4, 1.2.2].
+    *   *Result/Explanation:* Telemetry fields extracted. The log recorded an explicit `AuthenticationType` of **OAuth** and a `RequesterObjectId` of `494071c6-3230-4a4a-bc31-9bb7a5389320`. This confirms complete compliance: the runner did not use a legacy master access key, but instead consumed the short-lived token granted to our automation identity.
+
+### MILESTONE 04: CLOSED-LOOP MODEL BINDING AND EXFILTRATION PROOFING
+*   **Step 1:** Formulate a unified telemetry search string to link sign-in timestamps and resource modifications into a scannable dashboard format [1.2.2].
+    *   *Result/Explanation:* Developed a `union`-based chronological tracking query. Because rapid CLI/REST data-plane interactions skip standard interactive principal logs, the unified query combines identities and transaction events sequentially by time window:
+    ```kusto
+    union 
+    (
+        AADServicePrincipalSignInLogs
+        | where TimeGenerated > ago(24h)
+        | where AppId == "494071c6-3230-4a4a-bc31-9bb7a5389320"
+        | project TimeGenerated, Type = "Identity Sign-In", Detail = strcat("IP: ", IPAddress, " | AppName: ", ServicePrincipalName)
+    ),
+    (
+        StorageBlobLogs
+        | where TimeGenerated > ago(24h)
+        | where OperationName == "PutBlob"
+        | project TimeGenerated, Type = "Data-Plane Upload", Detail = strcat("Account: ", AccountName, " | File: ", ObjectKey)
+    )
+    | order by TimeGenerated desc
+    ```
+*   **Step 2:** Execute an intentional failure test by mutating your workflow settings to confirm the logging engine immediately catches unauthorized access blocks.
+    *   *Result/Explanation:* Executed a negative validation test by appending an invalid string (`-BREAKING-TEST`) directly to the `client-id` key within the GitHub `deploy-mesh.yml` file. 
+    *   *Security Outcome:* The runner failed instantly at the login phase. Because the manipulated Application ID did not exist within the Entra tenant database, the identity platform dropped the unmapped connection request right at the perimeter edge. No logs appeared inside the tenant and zero traffic reached the storage data plane, proving the architecture successfully contains unauthorized access attempts at the outermost perimeter boundary.
